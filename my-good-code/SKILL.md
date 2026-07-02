@@ -1,5 +1,5 @@
 ---
-name: writing-code
+name: my-good-code
 description: >-
   Produces simple, deep, correct, maintainable code using Philosophy of Software
   Design and Five Lines of Code principles. Use when implementing features,

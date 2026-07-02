@@ -2,13 +2,20 @@
 name: pr-explainer
 description: >-
   Generates detailed Pull Request descriptions from code diffs to ease human
-  review. Use when the user provides a diff or asks for a PR description, PR
-  summary, or explanation of code changes.
+  review, with emphasis on demonstrating the author's engineering understanding
+  of the changes. Use when the user provides a diff or asks for a PR
+  description, PR summary, or explanation of code changes.
 ---
 
 # PR Explainer
 
 A skill for generating clear and helpful Pull Request descriptions from code diffs.
+
+## Why this skill exists
+
+AI can generate code quickly, but engineers must still understand, verify, maintain, and improve it. As AI-generated code grows, a rising bug count is a warning sign that engineers may not fully understand the architecture, design, business logic, and trade-offs behind the code they ship.
+
+Code review should therefore focus less on mechanical issues and more on **engineering understanding**. A good PR description does not just narrate the diff — it confirms that the author understands and owns the code they are merging.
 
 ## Instructions
 
@@ -21,21 +28,38 @@ When the user asks you to write a Pull Request description based on a code diff,
 ### PR Description Template
 
 ```markdown
-## Overview
+### Overview
 [Provide a concise, 1-2 sentence high-level summary of what this Pull Request accomplishes and why the changes were made.]
 
-## Changes Made
+### Changes Made
 [Detail the specific modifications made in the code. Use bullet points and group them logically (e.g., by feature or file) if there are many changes.]
 - [Change 1: e.g., Added authentication middleware]
 - [Change 2: e.g., Refactored user creation logic]
 
-## Motivation
+### Motivation
 [Explain the reasoning behind these changes. What problem does this PR solve? Does it address a specific issue or feature request?]
 
-## Notes for the Reviewer
-[Provide any additional context that might help the reviewer. Point out specific areas where you'd like feedback, mention potential edge cases, or explain complex logic decisions.]
+### Engineering Understanding
+[This section confirms the author understands and owns the code. Address each area that is relevant to this change. Keep it brief but substantive — if an area is not applicable, omit it rather than padding it.]
+
+- **Architecture & design decisions**: Where does this change sit in the system? Why this structure over alternatives?
+- **Business logic**: What behavior does this implement, and why is it correct?
+- **Data structures & algorithms**: Why were these chosen? What are their complexity and limits?
+- **Design patterns**: Which patterns are used, and why are they the right fit here?
+- **Use of existing libraries**: Were open-source or internal libraries reused instead of hand-rolling? If something was built custom, why?
+- **Trade-offs, edge cases & risks**: What was sacrificed, what could go wrong, and how is it mitigated?
+- **Testing, monitoring & maintenance plan**: How is correctness verified today, how will failures be observed in production, and how will this be maintained?
+
+### Notes for the Reviewer
+[Provide any additional context that might help the reviewer. Point out specific areas where you'd like feedback, mention potential edge cases, or explain complex logic decisions. Frame reviewer questions around understanding and ownership rather than mechanical nitpicks.]
 ```
 
 3. **Be Specific but Accessible**: Translate code-level changes into human-readable explanations. Avoid just reading the diff back to the user; instead, explain the *impact* and *purpose* of the changes.
 
-4. **Review and Refine**: Before presenting the final description, review it to ensure it accurately reflects the diff and maintains a professional, helpful tone. If the diff is too large or lacks obvious context, you may ask the user for a brief summary of their intent to improve the PR description.
+4. **Focus on Understanding, Not Mechanics**: Prioritize explanations that demonstrate the author understands the code. Surface the *why* behind decisions — architecture, business logic, trade-offs, and risks — rather than restating *what* the diff does. Mechanical issues (formatting, style) are secondary and should not dominate the description.
+
+5. **Confirm Ownership, Don't Pressure**: The goal of the Engineering Understanding section is to confirm the author understands and owns the code, not to interrogate them. Write it as a confident, honest explanation. If the author (you, the user) is unsure about an area, say so explicitly and flag it in Notes for the Reviewer — that is more valuable than a confident-sounding guess.
+
+6. **Right-size the Description**: Match depth to the change. A one-line config tweak does not need all seven Engineering Understanding bullets — omit what does not apply. A large feature or risky refactor should address most or all of them.
+
+7. **Review and Refine**: Before presenting the final description, review it to ensure it accurately reflects the diff and maintains a professional, helpful tone. If the diff is too large or lacks obvious context, you may ask the user for a brief summary of their intent to improve the PR description.

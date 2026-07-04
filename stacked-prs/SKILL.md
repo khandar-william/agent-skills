@@ -1,9 +1,9 @@
 ---
 name: stacked-prs
 description: >-
-  Split a large diff into stacked branches/PRs or rebase an existing stack onto
-  latest main. Use only when the user explicitly invokes /stacked-prs with a
-  subcommand (split current diff, rebase to latest main).
+  Split a large diff into stacked branches/draft PRs or rebase an existing stack onto
+  latest main. Use when the user invokes /stacked-prs with split or rebase intent
+  (natural language is fine; verbatim subcommands are optional).
 disable-model-invocation: true
 ---
 
@@ -11,20 +11,37 @@ disable-model-invocation: true
 
 ## Command routing
 
-**If the user invokes only `/stacked-prs` (no subcommand):** show the help below and stop. Do not read diffs, run git commands, or propose a plan.
+Parse **intent** from the full `/stacked-prs …` message. Subcommands are shorthand, not required.
 
-**If the user invokes `/stacked-prs split current diff`:** follow [Split current diff](#split-current-diff).
+| Intent | Route to | Example invocations |
+|--------|----------|---------------------|
+| **Help** | Show [help](#help) and stop | `/stacked-prs` alone, or only "help" / "what can you do?" |
+| **Split** | [Split current diff](#split-current-diff) | `split current diff`; "break this into stacked PRs"; "split my large commit"; "stack these changes"; "I need stacked PRs for commit `6a2d416`" |
+| **Rebase** | [Rebase to latest main](#rebase-to-latest-main) | `rebase to latest main`; "rebase my stack"; "update the stack onto latest main"; "main moved, refresh the stack" |
 
-**If the user invokes `/stacked-prs rebase to latest main`:** follow [Rebase to latest main](#rebase-to-latest-main).
+**Split signals:** split, break up, stack, slice, separate PRs, too large for one PR, stacked PRs.
 
-### Help (show when `/stacked-prs` has no subcommand)
+**Rebase signals:** rebase, refresh, update stack, main moved, sync with main, `--update-refs`.
+
+If both intents appear, ask which one to run. If intent is unclear after reading the message, show help.
+
+**Do not** read diffs, run git commands, or propose a split plan for help-only invocations.
+
+### Help (show when intent is help-only)
 
 ```text
 /stacked-prs — manage stacked pull requests
 
-Commands:
-  /stacked-prs split current diff   Propose (then execute) a stacked split of your current diff vs main
-  /stacked-prs rebase to latest main   Rebase the entire stack onto origin/main with --update-refs
+Split (natural language OK):
+  /stacked-prs split my changes into stacked PRs
+  /stacked-prs break this large commit into stacked PRs <base-ref>
+  /stacked-prs stack these changes since origin/main
+
+Rebase (natural language OK):
+  /stacked-prs rebase my stack onto latest main
+  /stacked-prs main moved — update the stack
+
+Optional split base: name a commit, branch, or tag instead of main (see Split → Resolve refs).
 
 References:
   leveraging-llm-for-stacked-prs.md
@@ -39,7 +56,7 @@ References:
 - **Never discard work** — no destructive git (`reset --hard`, `clean -fdx`, branch deletion, force-push) without explicit approval.
 - **Backup before splitting** — save a recoverable snapshot; do not assume a safe branch exists.
 - **Stage named files only** — never `git add .` / `git add -A`.
-- **Linear stack** — each branch tip is an ancestor of the next; PRs target the branch below (first PR targets `main`).
+- **Linear stack** — each branch tip is an ancestor of the next; PRs target the branch below (first PR targets the [split base](#resolve-refs), default `main`).
 - **Merge bottom-up** — reviewers merge PR #1 first, then #2, and so on.
 
 Full references: [leveraging-llm-for-stacked-prs.md](leveraging-llm-for-stacked-prs.md), [context-planning-small-prs.md](context-planning-small-prs.md).
@@ -48,7 +65,24 @@ Full references: [leveraging-llm-for-stacked-prs.md](leveraging-llm-for-stacked-
 
 ## Split current diff
 
-The large change already exists (in `git diff`). Propose logical slices, then — after approval — create a **linear stack** of branches (one PR each).
+The large change already exists in git history and/or the working tree. Propose logical slices, then — after approval — create a **linear stack** of branches (one PR each).
+
+### Resolve refs
+
+Before reading the diff, determine **split base** and **split tip** from the user message and repo context.
+
+| Ref | Default | When user specifies |
+|-----|---------|---------------------|
+| **Split base** | `main` (prefer `origin/main` if it exists and differs) | Any commit SHA, branch, or tag they name as base / since / from / onto / "after" |
+| **Split tip** | `HEAD` (includes uncommitted work) | A named commit ("this commit `abc123`", "break up `abc123`") when they mean one commit only |
+
+**Interpretation rules:**
+
+1. **Range split (most common):** user wants everything after a point → `git diff <split-base>...<split-tip>`. Example: `/stacked-prs break this large commit into stacked PRs 6a2d416` → base `6a2d416`, tip `HEAD`.
+2. **Single-commit split:** user clearly points at one commit to decompose → use `git show <sha>` and/or `git diff <sha>^..<sha>`; first PR still targets split base (`<sha>^` or an explicit base they gave).
+3. **Ambiguous SHA:** if "this commit `sha`" could mean base or tip, state your reading in the plan and ask for confirmation before executing.
+
+Verify refs exist (`git rev-parse --verify <ref>`). Say which base and tip you used in the split plan.
 
 ### Splitting principles
 
@@ -75,17 +109,20 @@ Avoid: splitting too granularly (dead code with no context), mixing refactors wi
 
 ### Phase 1 — Read the diff
 
-Compare current work to `main` (committed **and** uncommitted):
+Compare current work to the resolved split base (committed **and** uncommitted unless tip is a fixed commit):
 
 ```bash
-git diff main...HEAD    # committed
-git diff                # uncommitted
+git diff <split-base>...<split-tip>   # committed range
+git diff                              # uncommitted (skip if tip is not HEAD)
 git status
+git log --oneline <split-base>..<split-tip>   # commits in range
 ```
 
 Summarize slices you see. Check ownership signals (`CODEOWNERS`, repo equivalents) for natural reviewer boundaries.
 
 ### Phase 2 — Propose the plan (no git mutations yet)
+
+State **split base** and **split tip** at the top of the plan.
 
 For each branch/PR provide:
 
@@ -93,7 +130,7 @@ For each branch/PR provide:
 - **PR title**
 - **One-sentence purpose**
 - **Files or paths** in this slice
-- **Base branch** (`main` for first; previous branch for the rest)
+- **Base branch** (split base for the first PR; previous branch for the rest)
 - **Commit order** within the stack
 
 Show the stack as a diagram (text tree or Mermaid). Ask the user to approve, merge thin slices, split oversized ones, and fix dependency order.
@@ -109,13 +146,44 @@ if [ -n "$SHA" ]; then
 fi
 ```
 
-2. For each branch **bottom-up** (first targets `main`):
+2. For each branch **bottom-up** (first targets split base):
    - Create branch from its base
    - Stage **only** the files for this slice
    - Commit with a clear message
-   - Push and open PR targeting the base branch
+   - Push the branch
+   - Generate the PR description (see [PR descriptions](#pr-descriptions))
+   - Open a **draft** PR targeting the base branch (see [Opening PRs](#opening-prs))
 
-3. Report back: PR titles/URLs, anything left on the starting branch or working tree. Do not delete backup refs unless asked.
+3. Report back: PR titles/URLs, split base/tip used, anything left on the starting branch or working tree. Do not delete backup refs unless asked.
+
+### PR descriptions
+
+Before opening each PR, get the slice diff:
+
+```bash
+git diff <base-branch>...<branch>
+```
+
+**If a `pr-explainer` skill exists** — check your assigned skills, or look for `SKILL.md` at `~/.agents/skills/pr-explainer/`, `~/.cursor/skills/pr-explainer/`, or `.cursor/skills/pr-explainer/`. When found, read that skill and generate the PR body from the slice diff using its template and guidelines.
+
+**Otherwise** — write a short fallback body: one-sentence overview, bullet list of key changes, and a brief test plan.
+
+Add stack context when helpful (e.g. "PR 2 of N in a stack; merge bottom-up" or when split base is not `main`).
+
+### Opening PRs
+
+Always create **draft** PRs so reviewers are not notified until the stack is ready:
+
+```bash
+gh pr create --draft \
+  --base <base-branch> \
+  --head <branch> \
+  --title "<title>" \
+  --body "$(cat <<'EOF'
+<description>
+EOF
+)"
+```
 
 ### Branch naming
 
@@ -136,11 +204,13 @@ main
                      └── f/#17196-z-ctp10-update-docs   PR #N (base: previous)
 ```
 
+When split base is not `main`, PR #1 still targets that ref (branch or commit); say so in the PR description.
+
 ### What reviewers see
 
 | Branch | PR targets | Diff shows |
 |--------|------------|------------|
-| `f/...-0-...` | `main` | Slice 0 only |
+| `f/...-0-...` | split base | Slice 0 only |
 | `f/...-1a-...` | `0` | Slice 1a only (not everything below) |
 | `f/...-z-...` | previous | Final slice only |
 
@@ -156,9 +226,12 @@ Each PR diff is **branch vs its base** — small and focused.
 
 ### Split checklist
 
+- [ ] Split base and tip resolved and stated
 - [ ] Backup ref saved
 - [ ] Split plan reviewed and approved
 - [ ] Branches created bottom-up; each PR targets branch below
+- [ ] Each PR description generated (via `pr-explainer` when available)
+- [ ] Each PR opened as a **draft**
 - [ ] Each PR compiles, passes CI, reviewable in ~1 hour
 
 ---
@@ -185,8 +258,8 @@ git rebase origin/main --update-refs
 5. Force-push all branches. GitHub allows at most **2 branch updates per push**:
 
 ```bash
-git push -f -u origin 'f/...-0-...' 'f/...-1a-...'
-git push -f -u origin 'f/...-1b-...' 'f/...-2-...'
+git push --force-with-lease -u origin 'f/...-0-...' 'f/...-1a-...'
+git push --force-with-lease -u origin 'f/...-1b-...' 'f/...-2-...'
 # ... pairs until all branches pushed
 ```
 
@@ -213,5 +286,6 @@ Prefer `--force-with-lease` when pushing. Get explicit approval before force-pus
 | Splitting at 300 lines arbitrarily | Split by logical unit |
 | Deferring all tests to last PR | Each branch carries its own tests |
 | Branch targets `main` mid-stack | Every branch after first targets the branch directly below |
+| Assuming split base is always `main` | Resolve base from the message; default to `main` only when unspecified |
 | Merging PRs out of order | Merge bottom-up |
 | Forgetting force-push after rebase | Push all stack branches |

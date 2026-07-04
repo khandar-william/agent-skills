@@ -107,7 +107,9 @@ Execute the approved split plan. For each branch in order:
 1. Create the branch from its base
 2. Stage ONLY the files for this slice (never git add .)
 3. Commit with a clear message
-4. Push and open a PR targeting the base branch
+4. Push the branch
+5. Generate the PR description from `git diff <base>...<branch>` — use the `pr-explainer` skill when it exists
+6. Open a **draft** PR targeting the base branch (`gh pr create --draft`)
 
 Start from the bottom of the stack (branch targeting main) and work up.
 Save a backup ref before starting.
@@ -176,17 +178,17 @@ After git rebase origin/main --update-refs (from f/#17196-z):
 Rebase rewrites history, so force-push each branch. Our GitHub restricts at most **2 branch updates per push**:
 
 ```bash
-git push -f -u origin \
+git push --force-with-lease -u origin \
   'f/#17196-0-ctp10-db-migration' \
   'f/#17196-1a-ctp10-refactor-validator'
 
-git push -f -u origin \
+git push --force-with-lease -u origin \
   'f/#17196-1b-ctp10-refactor-modifier' \
   'f/#17196-2-ctp10-type3-historical-validator-modifier'
 
 # ... continue in pairs until all branches are pushed
 
-git push -f -u origin \
+git push --force-with-lease -u origin \
   'f/#17196-7c-ctp10-fix-migration' \
   'f/#17196-z-ctp10-update-docs'
 ```
@@ -293,6 +295,8 @@ Help me recover using refs/backup/pre-split-* without losing work.
 - [ ] Backup ref saved before splitting
 - [ ] AI split plan reviewed and approved
 - [ ] Branches created bottom-up; each PR targets the branch below
+- [ ] Each PR description generated (via `pr-explainer` when available)
+- [ ] Each PR opened as a **draft**
 - [ ] Each PR compiles, passes CI, and is reviewable in ~1 hour
 
 **Maintain**
@@ -308,7 +312,7 @@ Help me recover using refs/backup/pre-split-* without losing work.
 
 | Step | What happens |
 |------|----------------|
-| **Split** | AI reads your large diff, proposes stacked branches, creates one PR per branch |
+| **Split** | AI reads your large diff, proposes stacked branches, creates one **draft** PR per branch |
 | **Review** | Reviewers see small diffs; merge bottom-up |
 | **Maintain** | Checkout the latest branch → `git rebase origin/main --update-refs` → force-push |
 
